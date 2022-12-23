@@ -27,7 +27,7 @@
 /* ct = 1; linear PCM (uncompressed): 44100/16/2, S16LE */
 static const char lpcm_caps[]="audio/x-raw,rate=(int)44100,channels=(int)2,format=S16LE,layout=interleaved";
 
-/* ct = 2; codec_data is ALAC magic cookie:  44100/16/2 spf = 352 */    
+/* ct = 2; codec_data is ALAC magic cookie:  44100/16/2 spf = 352 */
 static const char alac_caps[] = "audio/x-alac,mpegversion=(int)4,channnels=(int)2,rate=(int)44100,stream-format=raw,codec_data=(buffer)"
                            "00000024""616c6163""00000000""00000160""0010280a""0e0200ff""00000000""00000000""0000ac44";
 
@@ -38,7 +38,7 @@ static const char aac_lc_caps[] ="audio/mpeg,mpegversion=(int)4,channnels=(int)2
 static const char aac_eld_caps[] ="audio/mpeg,mpegversion=(int)4,channnels=(int)2,rate=(int)44100,stream-format=raw,codec_data=(buffer)f8e85000";
 
 typedef struct audio_renderer_s {
-    GstElement *appsrc; 
+    GstElement *appsrc;
     GstElement *pipeline;
     GstElement *volume;
     unsigned char ct;
@@ -93,7 +93,9 @@ void audio_renderer_init(logger_t *render_logger, const char* audiosink) {
         switch (i) {
         case 0:    /* AAC-ELD */
         case 2:    /* AAC-LC */
+            g_string_append(launch, "aacparse ! ");
             g_string_append(launch, "avdec_aac ! ");
+//            g_string_append(launch, "fdkaacdec ! ");
             break;
         case 1:    /* ALAC */
             g_string_append(launch, "avdec_alac ! ");
@@ -115,7 +117,7 @@ void audio_renderer_init(logger_t *render_logger, const char* audiosink) {
         }
         g_string_free(launch, TRUE);
         g_assert (renderer_type[i]->pipeline);
- 
+
         renderer_type[i]->appsrc = gst_bin_get_by_name (GST_BIN (renderer_type[i]->pipeline), "audio_source");
         renderer_type[i]->volume = gst_bin_get_by_name (GST_BIN (renderer_type[i]->pipeline), "volume");
         switch (i) {
@@ -180,7 +182,7 @@ void  audio_renderer_start(unsigned char *ct) {
     } else {
         logger_log(logger, LOGGER_ERR, "unknown audio compression type ct = %d", *ct);
     }
-    
+
 }
 
 void audio_renderer_render_buffer(raop_ntp_t *ntp, unsigned char* data, int data_len, uint64_t ntp_time,
@@ -195,7 +197,7 @@ void audio_renderer_render_buffer(raop_ntp_t *ntp, unsigned char* data, int data
      * first byte of AAC_ELD is 0x8c, 0x8d or 0x8e: 0x100011(00,01,10) in modern devices               *
      *                   but is 0x80, 0x81 or 0x82: 0x100000(00,01,10) in ios9, ios10 devices          *
      * first byte of AAC_LC should be 0xff (ADTS) (but has never been  seen).                          */
-    
+
     buffer = gst_buffer_new_and_alloc(data_len);
     g_assert(buffer != NULL);
     GST_BUFFER_PTS(buffer) = (GstClockTime) ntp_time;
@@ -210,7 +212,7 @@ void audio_renderer_render_buffer(raop_ntp_t *ntp, unsigned char* data, int data
         case 0x81:
         case 0x82:
             valid = true;
-            break;          
+            break;
         default:
             valid = false;
             break;
