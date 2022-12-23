@@ -384,8 +384,8 @@ running if the ssh session is closed. Terminal output is saved to FILE
 
 ### Non-Debian-based Linux or \*BSD
 
--   **Red Hat, Fedora, CentOS (now continued as Rocky Linux or Alma
-    Linux):** (sudo yum install) openssl-devel libplist-devel
+-   **Red Hat, or clones like CentOS (now continued as Rocky Linux or
+    Alma Linux):** (sudo yum install) openssl-devel libplist-devel
     avahi-compat-libdns_sd-devel (some from the "PowerTools" add-on
     repository) (+libX11-devel for fullscreen X11, and "ZOOMFIX" if
     needed). The required GStreamer packages are: gstreamer1-devel
@@ -394,6 +394,10 @@ running if the ssh session is closed. Terminal output is saved to FILE
     you may need to get some of them (in particular gstreamer1-libav)
     from [rpmfusion.org](https://rpmfusion.org) (which provides packages
     including plugins that RedHat does not ship for license reasons).
+    *\[In recent **Fedora**, the libav plugin package is renamed to
+    "gstreamer1-plugin-libav"; this is supplied by RedHat, and instead
+    the code it needs, but which RedHat does not provide, is in the
+    package ffmpeg-libs from rpmfusion.org\]*.
 
 -   **OpenSUSE:** (sudo zypper install) libopenssl-devel libplist-devel
     avahi-compat-mDNSResponder-devel (+ libX11-devel for fullscreen X11,
