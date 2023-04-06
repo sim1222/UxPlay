@@ -94,8 +94,8 @@ void audio_renderer_init(logger_t *render_logger, const char* audiosink) {
         case 0:    /* AAC-ELD */
         case 2:    /* AAC-LC */
             g_string_append(launch, "aacparse ! ");
-            g_string_append(launch, "avdec_aac ! ");
-//            g_string_append(launch, "fdkaacdec ! ");
+//            g_string_append(launch, "avdec_aac ! ");
+            g_string_append(launch, "fdkaacdec ! ");
             break;
         case 1:    /* ALAC */
             g_string_append(launch, "avdec_alac ! ");

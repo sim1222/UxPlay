@@ -32,7 +32,7 @@ struct video_renderer_s {
     GstElement *appsrc, *pipeline, *sink;
     GstBus *bus;
 #ifdef  X_DISPLAY_FIX
-    const char * server_name;  
+    const char * server_name;
     X11_Window_t * gst_window;
 #endif
 };
@@ -58,7 +58,7 @@ static void append_videoflip (GString *launch, const videoflip_t *flip, const vi
         case LEFT:
             g_string_append(launch, "videoflip method=upper-left-diagonal ! ");
             break;
-        case RIGHT: 
+        case RIGHT:
             g_string_append(launch, "videoflip method=upper-right-diagonal ! ");
             break;
         default:
@@ -71,7 +71,7 @@ static void append_videoflip (GString *launch, const videoflip_t *flip, const vi
         case LEFT:
             g_string_append(launch, "videoflip method=upper-right-diagonal ! ");
             break;
-        case RIGHT: 
+        case RIGHT:
             g_string_append(launch, "videoflip method=upper-left-diagonal ! ");
             break;
         default:
@@ -84,7 +84,7 @@ static void append_videoflip (GString *launch, const videoflip_t *flip, const vi
         case LEFT:
             g_string_append(launch, "videoflip method=counterclockwise ! ");
             break;
-        case RIGHT: 
+        case RIGHT:
             g_string_append(launch, "videoflip method=clockwise ! ");
             break;
         default:
@@ -92,7 +92,7 @@ static void append_videoflip (GString *launch, const videoflip_t *flip, const vi
         }
         break;
     }
-}	
+}
 
 static video_renderer_t *renderer = NULL;
 static logger_t *logger = NULL;
@@ -101,12 +101,12 @@ static bool first_packet = false;
 
 /* apple uses colorimetry=1:3:5:1 (not recognized by gstreamer v4l2)  *
  * See .../gst-libs/gst/video/video-color.h in gst-plugins-base  *
- * range = 1   -> GST_VIDEO_COLOR_RANGE_0_255      ("full RGB")  * 
+ * range = 1   -> GST_VIDEO_COLOR_RANGE_0_255      ("full RGB")  *
  * matrix = 3  -> GST_VIDEO_COLOR_MATRIX_BT709                   *
  * transfer = 5 -> GST_VIDEO_TRANSFER_BT709                      *
  * primaries = 1 -> GST_VIDEO_COLOR_PRIMARIES_BT709              *
  * closest is BT709, 2:3:5:1 with                                *
- * range = 2 -> GST_VIDEO_COLOR_RANGE_16_235 ("limited RGB")     */  
+ * range = 2 -> GST_VIDEO_COLOR_RANGE_16_235 ("limited RGB")     */
 
 static const char h264_caps[]="video/x-h264,stream-format=(string)byte-stream,alignment=(string)au";
 
@@ -141,7 +141,8 @@ void  video_renderer_init(logger_t *render_logger, const char *server_name, vide
     g_string_append(launch, decoder);
     g_string_append(launch, " ! ");
     g_string_append(launch, converter);
-    g_string_append(launch, " ! ");    
+    g_string_append(launch, " ! ");
+//    g_string_append(launch, "video/x-raw,colorimetry=\"2:3:5:1\" ! ");
     append_videoflip(launch, &videoflip[0], &videoflip[1]);
     g_string_append(launch, videosink);
     g_string_append(launch, " name=video_sink sync=false");
@@ -238,7 +239,7 @@ void video_renderer_stop() {
   if (renderer) {
             gst_app_src_end_of_stream (GST_APP_SRC(renderer->appsrc));
 	    gst_element_set_state (renderer->pipeline, GST_STATE_NULL);
-  }   
+  }
 }
 
 void video_renderer_destroy() {
@@ -258,7 +259,7 @@ void video_renderer_destroy() {
             free(renderer->gst_window);
             renderer->gst_window = NULL;
         }
-#endif    
+#endif
         free (renderer);
         renderer = NULL;
     }
@@ -345,5 +346,5 @@ gboolean gstreamer_pipeline_bus_callback(GstBus *bus, GstMessage *message, gpoin
 
 unsigned int video_renderer_listen(void *loop) {
     return (unsigned int) gst_bus_add_watch(renderer->bus, (GstBusFunc)
-                                            gstreamer_pipeline_bus_callback, (gpointer) loop);    
-}  
+                                            gstreamer_pipeline_bus_callback, (gpointer) loop);
+}
