@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *=================================================================
+ * modified by fduncanh 2021-2022
  */
 
 #include <stdlib.h>
@@ -18,6 +21,7 @@
 #include <assert.h>
 #include <time.h>
 #include <stdint.h>
+#define SECOND_IN_NSECS 1000000000UL
 
 char *
 utils_strsep(char **stringp, const char *delim)
@@ -183,19 +187,28 @@ char *utils_parse_hex(const char *str, int str_len, int *data_len) {
 }
 
 char *utils_data_to_string(const unsigned char *data, int datalen, int chars_per_line) {
-    int len = 3*datalen + ((datalen-1)/chars_per_line ) + 1;
+    assert(datalen >= 0);
+    assert(chars_per_line > 0);
+    int len = 3*datalen + 1;
+    if (datalen > chars_per_line) {
+        len += (datalen-1)/chars_per_line;
+    }
     char *str = (char *) calloc(len + 1, sizeof(char));
     assert(str);
     char *p = str;
+    int n = len + 1;
     for (int i = 0; i < datalen; i++) {
         if (i > 0 && i % chars_per_line == 0) {
-            sprintf(p,"\n");
+            snprintf(p, n, "\n");
+            n--;
             p++;
         }
-        sprintf(p,"%2.2x ", (unsigned int) data[i]);
+        snprintf(p, n, "%2.2x ", (unsigned int) data[i]);
+        n -= 3;
         p += 3;
     }
-    sprintf(p,"\n");
+    snprintf(p, n, "\n");
+    n--;
     p++;
     assert(p == &(str[len]));
     assert(len == strlen(str));
@@ -215,21 +228,21 @@ char *utils_data_to_text(const char *data, int datalen) {
 }
 
 void ntp_timestamp_to_time(uint64_t ntp_timestamp, char *timestamp, size_t maxsize) {
-    time_t rawtime = (time_t) (ntp_timestamp / 1000000);
+    time_t rawtime = (time_t) (ntp_timestamp / SECOND_IN_NSECS);
     struct tm ts = *localtime(&rawtime);
-    assert(maxsize > 26);
+    assert(maxsize > 29);
 #ifdef _WIN32  /*modification for compiling for Windows */
     strftime(timestamp, 20, "%Y-%m-%d %H:%M:%S", &ts);
 #else
     strftime(timestamp, 20, "%F %T", &ts);
 #endif
-    snprintf(timestamp + 19, 8,".%6.6u", (unsigned int) ntp_timestamp % 1000000);
+    snprintf(timestamp + 19, 11,".%9.9lu", (unsigned long) ntp_timestamp % SECOND_IN_NSECS);
 }
 
 void ntp_timestamp_to_seconds(uint64_t ntp_timestamp, char *timestamp, size_t maxsize) {
-    time_t rawtime = (time_t) (ntp_timestamp / 1000000);
+    time_t rawtime = (time_t) (ntp_timestamp / SECOND_IN_NSECS);
     struct tm ts = *localtime(&rawtime);
-    assert(maxsize > 9);
+    assert(maxsize > 12);
     strftime(timestamp, 3, "%S", &ts);
-    snprintf(timestamp + 2, 8,".%6.6u", (unsigned int) ntp_timestamp % 1000000);
+    snprintf(timestamp + 2, 11,".%9.9lu", (unsigned long) ntp_timestamp % SECOND_IN_NSECS);
 }

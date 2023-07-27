@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *===================================================================
+ * modfied by fduncanh 2021-2023
  */
 
 /* This file should be only included from raop.c as it defines static handler
@@ -20,6 +23,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <plist/plist.h>
+#define AUDIO_SAMPLE_RATE 44100   /* all supported AirPlay audio format use this sample rate */
+#define SECOND_IN_USECS 1000000
 
 typedef void (*raop_handler_t)(raop_conn_t *, http_request_t *,
                                http_response_t *, char **, int *);
@@ -313,10 +318,10 @@ raop_handler_setup(raop_conn_t *conn,
     int use_udp;
     const char *dacp_id;
     const char *active_remote_header;
-
+    bool logger_debug = (logger_get_level(conn->raop->logger) >= LOGGER_DEBUG);
+    
     const char *data;
     int data_len;
-
     data = http_request_get_data(request, &data_len);
 
     dacp_id = http_request_get_header(request, "DACP-ID");
@@ -364,9 +369,11 @@ raop_handler_setup(raop_conn_t *conn,
         memcpy(aesiv, eiv, 16);
         free(eiv);	
         logger_log(conn->raop->logger, LOGGER_DEBUG, "eiv_len = %llu", eiv_len);
-        char* str = utils_data_to_string(aesiv, 16, 16);
-        logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aesiv (needed for AES-CBC audio decryption iv):\n%s", str);
-        free(str);
+	if (logger_debug) {
+            char* str = utils_data_to_string(aesiv, 16, 16);
+            logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aesiv (needed for AES-CBC audio decryption iv):\n%s", str);
+            free(str);
+	}
 
         char* ekey = NULL;
         uint64_t ekey_len = 0;
@@ -375,21 +382,18 @@ raop_handler_setup(raop_conn_t *conn,
         free(ekey);
         logger_log(conn->raop->logger, LOGGER_DEBUG, "ekey_len = %llu", ekey_len);
         // eaeskey is 72 bytes, aeskey is 16 bytes
-        str = utils_data_to_string((unsigned char *) eaeskey, ekey_len, 16);
-        logger_log(conn->raop->logger, LOGGER_DEBUG, "ekey:\n%s", str);
-        free (str);
-
+	if (logger_debug) {
+            char *str = utils_data_to_string((unsigned char *) eaeskey, ekey_len, 16);
+            logger_log(conn->raop->logger, LOGGER_DEBUG, "ekey:\n%s", str);
+            free (str);
+        }
         int ret = fairplay_decrypt(conn->fairplay, (unsigned char*) eaeskey, aeskey);
         logger_log(conn->raop->logger, LOGGER_DEBUG, "fairplay_decrypt ret = %d", ret);
-        str = utils_data_to_string(aeskey, 16, 16);
-        logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aeskey (fairplay-decrypted from ekey):\n%s", str);
-        free(str);
-
-        unsigned char ecdh_secret[X25519_KEY_SIZE];
-        pairing_get_ecdh_secret_key(conn->pairing, ecdh_secret);
-        str = utils_data_to_string(ecdh_secret, X25519_KEY_SIZE, 16);
-        logger_log(conn->raop->logger, LOGGER_DEBUG, "32 byte shared ecdh_secret:\n%s", str);
-        free(str);
+        if (logger_debug) {
+            char *str = utils_data_to_string(aeskey, 16, 16);
+            logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aeskey (fairplay-decrypted from ekey):\n%s", str);
+            free(str);
+        }
 
         const char *user_agent = http_request_get_header(request, "User-Agent");
         logger_log(conn->raop->logger, LOGGER_INFO, "Client identified as User-Agent: %s", user_agent);	
@@ -401,16 +405,34 @@ raop_handler_setup(raop_conn_t *conn,
         if  (old_protocol) {    /* some windows AirPlay-client emulators use old AirPlay 1 protocol with unhashed AES key */
             logger_log(conn->raop->logger, LOGGER_INFO, "Client identifed as using old protocol (unhashed) AES audio key)");
         } else {
-            memcpy(eaeskey, aeskey, 16);
-            sha_ctx_t *ctx = sha_init();
-            sha_update(ctx, eaeskey, 16);
-            sha_update(ctx, ecdh_secret, 32);
-            sha_final(ctx, eaeskey, NULL);
-            sha_destroy(ctx);
-            memcpy(aeskey, eaeskey, 16);
-            str = utils_data_to_string(aeskey, 16, 16);
-            logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aeskey after sha-256 hash with ecdh_secret:\n%s", str);
-            free(str);
+            unsigned char ecdh_secret[X25519_KEY_SIZE];
+            if (pairing_get_ecdh_secret_key(conn->pairing, ecdh_secret)) {
+                /* In this case  (legacy) pairing with client was successfully set up and created the shared ecdh_secret:
+                 * aeskey must be hashed with it
+                 *
+                 * If byte 27 of features ("supports legacy pairing") is turned off, the client does not request pairsetup
+                 * and does NOT set up pairing (this eliminates a 5 second delay in connecting with no apparent bad effects).
+                 * This may be because uxplay currently does not support connections with more than one client at a time
+                 * while AppleTV supports up to 12 clients, and uses pairing to give each a distinct SessionID .*/
+
+                if (logger_debug) {
+                    char *str = utils_data_to_string(ecdh_secret, X25519_KEY_SIZE, 16);
+                    logger_log(conn->raop->logger, LOGGER_DEBUG, "32 byte shared ecdh_secret:\n%s", str);
+                    free(str);
+                }
+                memcpy(eaeskey, aeskey, 16);
+                sha_ctx_t *ctx = sha_init();
+                sha_update(ctx, eaeskey, 16);
+                sha_update(ctx, ecdh_secret, 32);
+                sha_final(ctx, eaeskey, NULL);
+                sha_destroy(ctx);
+                memcpy(aeskey, eaeskey, 16);
+                if (logger_debug) {
+                    char *str = utils_data_to_string(aeskey, 16, 16);
+                    logger_log(conn->raop->logger, LOGGER_DEBUG, "16 byte aeskey after sha-256 hash with ecdh_secret:\n%s", str);
+                    free(str);
+                }
+            }
         }
 
         // Time port
@@ -423,14 +445,30 @@ raop_handler_setup(raop_conn_t *conn,
 			   " Only AirPlay v1 protocol (using NTP and timing port) is supported");
             }
 	}
-	uint64_t string_len;
-        const char *timing_protocol;
+        char *timing_protocol = NULL;
+	timing_protocol_t time_protocol;
         plist_t req_timing_protocol_node = plist_dict_get_item(req_root_node, "timingProtocol");
-        timing_protocol = plist_get_string_ptr(req_timing_protocol_node, &string_len);
-        if (strcmp(timing_protocol, "NTP")) {
-            logger_log(conn->raop->logger, LOGGER_ERR, "Client specified timingProtocol=%s, but timingProtocol= NTP is required here", timing_protocol);     
+        plist_get_string_val(req_timing_protocol_node, &timing_protocol);
+        if (timing_protocol) {
+             int string_len = strlen(timing_protocol);
+             if (strncmp(timing_protocol, "NTP", string_len) == 0) {
+                 time_protocol = NTP;
+             } else if (strncmp(timing_protocol, "None", string_len) == 0) {
+                 time_protocol = TP_NONE;
+             } else {
+                 time_protocol = TP_OTHER;
+             }
+             if (time_protocol != NTP) {
+                 logger_log(conn->raop->logger, LOGGER_ERR, "Client specified timingProtocol=%s,"
+                            " but timingProtocol= NTP is required here", timing_protocol);
+             }
+             free (timing_protocol);
+             timing_protocol = NULL;
+        } else {
+            logger_log(conn->raop->logger, LOGGER_DEBUG, "Client did not specify timingProtocol,"
+                       " old protocol without offset will be used");
+            time_protocol = TP_UNSPECIFIED;
         }
-        timing_protocol = NULL;
         uint64_t timing_rport = 0;
         plist_t req_timing_port_node = plist_dict_get_item(req_root_node, "timingPort");
 	if (req_timing_port_node) {
@@ -439,14 +477,18 @@ raop_handler_setup(raop_conn_t *conn,
         if (timing_rport) {
             logger_log(conn->raop->logger, LOGGER_DEBUG, "timing_rport = %llu", timing_rport);
         } else {
-            logger_log(conn->raop->logger, LOGGER_ERR, "Client did not supply timing_rport, may be using unsupported AirPlay2 \"Remote Control\" protocol");
+            logger_log(conn->raop->logger, LOGGER_ERR, "Client did not supply timing_rport,"
+                       " may be using unsupported AirPlay2 \"Remote Control\" protocol");
         }
         unsigned short timing_lport = conn->raop->timing_lport;
-        conn->raop_ntp = raop_ntp_init(conn->raop->logger, &conn->raop->callbacks, conn->remote, conn->remotelen, timing_rport);
+        conn->raop_ntp = raop_ntp_init(conn->raop->logger, &conn->raop->callbacks, conn->remote,
+                                       conn->remotelen, (unsigned short) timing_rport, &time_protocol);
         raop_ntp_start(conn->raop_ntp, &timing_lport, conn->raop->max_ntp_timeouts);
 
-        conn->raop_rtp = raop_rtp_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote, conn->remotelen, aeskey, aesiv);
-        conn->raop_rtp_mirror = raop_rtp_mirror_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp, conn->remote, conn->remotelen, aeskey);
+        conn->raop_rtp = raop_rtp_init(conn->raop->logger, &conn->raop->callbacks, conn->raop_ntp,
+                                       conn->remote, conn->remotelen, aeskey, aesiv);
+        conn->raop_rtp_mirror = raop_rtp_mirror_init(conn->raop->logger, &conn->raop->callbacks,
+                                                     conn->raop_ntp, conn->remote, conn->remotelen, aeskey);
 
         plist_t res_event_port_node = plist_new_uint(conn->raop->port);
         plist_t res_timing_port_node = plist_new_uint(timing_lport);
@@ -476,7 +518,8 @@ raop_handler_setup(raop_conn_t *conn,
                     plist_t stream_id_node = plist_dict_get_item(req_stream_node, "streamConnectionID");
                     uint64_t stream_connection_id;
                     plist_get_uint_val(stream_id_node, &stream_connection_id);
-                    logger_log(conn->raop->logger, LOGGER_DEBUG, "streamConnectionID (needed for AES-CTR video decryption key and iv): %llu", stream_connection_id);
+                    logger_log(conn->raop->logger, LOGGER_DEBUG, "streamConnectionID (needed for AES-CTR video decryption"
+                               " key and iv): %llu", stream_connection_id);
 
                     if (conn->raop_rtp_mirror) {
                         raop_rtp_init_mirror_aes(conn->raop_rtp_mirror, &stream_connection_id);
@@ -500,6 +543,8 @@ raop_handler_setup(raop_conn_t *conn,
                     unsigned short cport = conn->raop->control_lport, dport = conn->raop->data_lport; 
                     unsigned short remote_cport = 0;
                     unsigned char ct;
+                    unsigned int sr = AUDIO_SAMPLE_RATE; /* all AirPlay audio formats supported so far have sample rate 44.1kHz */
+
                     uint64_t uint_val = 0;
                     plist_t req_stream_control_port_node = plist_dict_get_item(req_stream_node, "controlPort");
                     plist_get_uint_val(req_stream_control_port_node, &uint_val);
@@ -544,7 +589,7 @@ raop_handler_setup(raop_conn_t *conn,
                     }
 
                     if (conn->raop_rtp) {
-                        raop_rtp_start_audio(conn->raop_rtp, use_udp, remote_cport, &cport, &dport, ct);
+                        raop_rtp_start_audio(conn->raop_rtp, use_udp, &remote_cport, &cport, &dport, &ct, &sr);
                         logger_log(conn->raop->logger, LOGGER_DEBUG, "RAOP initialized success");
                     } else {
                         logger_log(conn->raop->logger, LOGGER_ERR, "RAOP not initialized at SETUP, playing will fail!");
@@ -685,7 +730,10 @@ raop_handler_record(raop_conn_t *conn,
                     http_request_t *request, http_response_t *response,
                     char **response_data, int *response_datalen)
 {
+    char audio_latency[12];
+    unsigned int ad = (unsigned int) (((uint64_t) conn->raop->audio_delay_micros) * AUDIO_SAMPLE_RATE / SECOND_IN_USECS);
+    snprintf(audio_latency, sizeof(audio_latency), "%u", ad);
     logger_log(conn->raop->logger, LOGGER_DEBUG, "raop_handler_record");
-    http_response_add_header(response, "Audio-Latency", "11025");
+    http_response_add_header(response, "Audio-Latency", audio_latency);
     http_response_add_header(response, "Audio-Jack-Status", "connected; type=analog");
 }

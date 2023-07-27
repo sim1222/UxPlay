@@ -10,6 +10,9 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
+ *
+ *===================================================================
+ * modified by fduncanh 2021-23
  */
 
 #include <stdlib.h>
@@ -60,6 +63,7 @@ struct raop_s {
     uint8_t overscanned;
     uint8_t clientFPSdata;
 
+    int audio_delay_micros;
     int max_ntp_timeouts;
 };
 
@@ -152,13 +156,13 @@ conn_init(void *opaque, unsigned char *local, int locallen, unsigned char *remot
 static void
 conn_request(void *ptr, http_request_t *request, http_response_t **response) {
     raop_conn_t *conn = ptr;
-    logger_log(conn->raop->logger, LOGGER_DEBUG, "conn_request");
     const char *method;
     const char *url;
     const char *cseq;
-
     char *response_data = NULL;
     int response_datalen = 0;
+    logger_log(conn->raop->logger, LOGGER_DEBUG, "conn_request");
+    bool logger_debug = (logger_get_level(conn->raop->logger) >= LOGGER_DEBUG);
 
     method = http_request_get_method(request);
     url = http_request_get_url(request);
@@ -176,7 +180,7 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
         free(header_str);
         int request_datalen;
         const char *request_data = http_request_get_data(request, &request_datalen);
-        if (request_data) {
+        if (request_data && logger_debug) {
             if (request_datalen > 0) {
 	        if (data_is_plist) {
 		    plist_t req_root_node = NULL;
@@ -329,7 +333,7 @@ conn_request(void *ptr, http_request_t *request, http_response_t **response) {
     bool data_is_text = (strstr(header_str,"text/parameters") != NULL);
     free(header_str);
     if (response_data) {
-        if (response_datalen > 0) {
+        if (response_datalen > 0 && logger_debug) {
             if (data_is_plist) {
                 plist_t res_root_node = NULL;
                 plist_from_bin(response_data, response_datalen, &res_root_node);
@@ -461,6 +465,7 @@ raop_init(int max_clients, raop_callbacks_t *callbacks) {
     raop->clientFPSdata = 0;
 
     raop->max_ntp_timeouts = 0;
+    raop->audio_delay_micros = 250000;
 
     return raop;
 }
@@ -519,6 +524,11 @@ int raop_set_plist(raop_t *raop, const char *plist_item, const int value) {
     } else if (strcmp(plist_item, "max_ntp_timeouts") == 0) {
         raop->max_ntp_timeouts = (value > 0 ? value : 0);
         if (raop->max_ntp_timeouts != value) retval = 1;
+    } else if (strcmp(plist_item, "audio_delay_micros") == 0) {
+        if (value >= 0 && value <= 10 * SECOND_IN_USECS) {     
+            raop->audio_delay_micros = value;
+        }
+        if (raop->audio_delay_micros != value) retval = 1;
     }  else {
         retval = -1;
     }	  

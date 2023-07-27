@@ -1,32 +1,33 @@
 cmake_minimum_required(VERSION 3.4.1)
 include_directories( playfair llhttp )
 
-# Common Linux cflags
-if ( UNIX  AND NOT APPLE )
-  set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g" )
-endif()
-
-if ( WIN32 )
-  message( STATUS "Building for Windows " )
-  set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_WIN32 -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g" )
-endif()
+message( STATUS "*** CFLAGS \"" ${CMAKE_C_FLAGS} "\" from build environment will be postpended to CMAKE_CFLAGS" )
 
 # Common x86/x86_64 cflags
 if( NOT NO_MARCH_NATIVE AND CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)" )
-  set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Ofast -march=native" )
+  set( CMAKE_C_FLAGS "-Ofast -march=native ${CMAKE_C_FLAGS}" )
   message( STATUS "Using CFLAGS with  -march=native" )
   message( STATUS "*** ONLY USE THIS WHEN COMPILING ON THE MACHINE THAT WILL RUN UXPLAY" )
   message( STATUS "  run \"cmake -DNO_MARCH_NATIVE=ON\" to switch off this compiler option" )
 else()
   message( STATUS "Not using -march=native" )
-  set( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2" )
+  set( CMAKE_C_FLAGS "-O2 ${CMAKE_C_FLAGS}" )
+endif()
+
+# Common Linux cflags
+if ( UNIX  AND NOT APPLE )
+  set( CMAKE_C_FLAGS "-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64  -Wall ${CMAKE_C_FLAGS}" )
+endif()
+
+if ( WIN32 )
+  message( STATUS "Building for Windows " )
+  set( CMAKE_C_FLAGS "-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_WIN32 -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -Wall ${CMAKE_C_FLAGS}" )
 endif()
 
 message( STATUS "using CMAKE_CFLAGS: " ${CMAKE_C_FLAGS} )
 
 #activate the NOHOLD feature to drop existing connections if a third connection is made 
 add_definitions( -DNOHOLD )
-
 
 INCLUDE (CheckIncludeFiles)
 if( WIN32 )
@@ -41,8 +42,10 @@ endif()
 
 if( APPLE )
   set( ENV{PKG_CONFIG_PATH} "/usr/local/lib/pkgconfig" ) # standard location, and Brew
+  set( ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:/opt/homebrew/lib/pkgconfig" ) # Brew for M1 macs
   set( ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:/opt/local/lib/pkgconfig/" ) # MacPorts
   set( ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:/usr/local/opt/openssl@3/lib/pkgconfig" ) # Brew openssl
+  set( ENV{PKG_CONFIG_PATH} "$ENV{PKG_CONFIG_PATH}:/opt/homebrew/opt/openssl@3/lib/pkgconfig" ) # Brew M1 openssl
   message( "PKG_CONFIG_PATH (Apple, lib) = " $ENV{PKG_CONFIG_PATH} )
   find_program( PKG_CONFIG_EXECUTABLE  pkg-config  PATHS /Library/FrameWorks/GStreamer.framework/Commands )
   message( "PKG_CONFIG_EXECUTABLE " ${PKG_CONFIG_EXECUTABLE} )
@@ -97,7 +100,8 @@ target_include_directories( airplay PRIVATE ${PLIST_INCLUDE_DIRS} )
 if( APPLE )
   # use static linking
   # can either compile Openssl 1.1.1 or 3.0.0  from source (install_dev  to /usr/local) or use Macports or Brew
-  # MacPorts needs zlib with it, Brew has a strange "keg-only" installation in usr/local/opt/openssl@3
+  # MacPorts needs zlib with it. Brew has a "keg-only" installation in /usr/local/opt/openssl@3
+  # Brew on M1 macs puts this in  /opt/homebrew/opt/openssl@3
   pkg_check_modules( OPENSSL REQUIRED openssl>=1.1.1)
   message( "OPENSSL_LIBRARY_DIRS " ${OPENSSL_LIBRARY_DIRS} )
   message( "OPENSSL_INCLUDE_DIRS " ${OPENSSL_INCLUDE_DIRS} )
@@ -129,7 +133,11 @@ if ( NOT APPLE )
     target_link_libraries(airplay PUBLIC ${DNSSD} )
   else()  # can also build if mDNSResponder or another implementation of dns_sd is present instead of Avahi
     if ( WIN32 )
-      set(BONJOUR_SDK "$ENV{BONJOUR_SDK_HOME}" )
+      if (DEFINED ENV{BONJOUR_SDK_HOME}) 
+        set(BONJOUR_SDK "$ENV{BONJOUR_SDK_HOME}" )
+      else()
+        set(BONJOUR_SDK "C:\\Program Files\\Bonjour SDK")
+      endif()
       message( STATUS "BONJOUR_SDK_HOME " ${BONJOUR_SDK} )
       set(DNSSD "${BONJOUR_SDK}/Lib/x64/dnssd.lib")
       target_link_libraries(airplay ${DNSSD} )
